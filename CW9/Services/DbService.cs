@@ -83,44 +83,49 @@ public class DbService : IDbService
     
     public async Task<PatientDetailsDto> GetPatientDetailsByIdAsync(int patientId)
     {
-        var dto = await _db.Patients
-            .Where(p => p.IdPatient == patientId)
-            .Select(p => new PatientDetailsDto
-            {
-                IdPatient   = p.IdPatient,
-                FirstName   = p.FirstName,
-                LastName    = p.LastName,
-                BirthDate   = p.BirthDate,
-                Prescriptions = p.Prescriptions
-                    .OrderBy(r => r.DueDate)
-                    .Select(r => new PrescriptionDto
-                    {
-                        IdPrescription = r.IdPrescription,
-                        Date           = r.Date,
-                        DueDate        = r.DueDate,
-                        Doctor = new DoctorDto
-                        {
-                            IdDoctor  = r.Doctor.IdDoctor,
-                            FirstName = r.Doctor.FirstName,
-                            LastName  = r.Doctor.LastName,
-                            Email     = r.Doctor.Email
-                        },
-                        Medicaments = r.PrescriptionMedicaments
-                            .Select(pm => new MedicamentDto
-                            {
-                                IdMedicament = pm.IdMedicament,
-                                Name         = pm.Medicament.Name,
-                                Dose         = pm.Dose,
-                                Details      = pm.Details
-                            })
-                            .ToList()
-                    })
-                    .ToList()
-            })
-            .FirstOrDefaultAsync();
+        var patient = await _db.Patients
+            .Include(p => p.Prescriptions)
+            .ThenInclude(r => r.Doctor)
+            .Include(p => p.Prescriptions)
+            .ThenInclude(r => r.PrescriptionMedicaments)
+            .ThenInclude(pm => pm.Medicament)
+            .FirstOrDefaultAsync(p => p.IdPatient == patientId);
 
-        if (dto == null)
+        if (patient == null)
             throw new KeyNotFoundException($"Patient with id {patientId} not found");
+
+        var dto = new PatientDetailsDto
+        {
+            IdPatient = patient.IdPatient,
+            FirstName = patient.FirstName,
+            LastName = patient.LastName,
+            BirthDate = patient.BirthDate,
+            Prescriptions = patient.Prescriptions
+                .OrderBy(r => r.DueDate)
+                .Select(r => new PrescriptionDto
+                {
+                    IdPrescription = r.IdPrescription,
+                    Date = r.Date,
+                    DueDate = r.DueDate,
+                    Doctor = new DoctorDto
+                    {
+                        IdDoctor = r.Doctor.IdDoctor,
+                        FirstName = r.Doctor.FirstName,
+                        LastName = r.Doctor.LastName,
+                        Email = r.Doctor.Email
+                    },
+                    Medicaments = r.PrescriptionMedicaments
+                        .Select(pm => new MedicamentDto
+                        {
+                            IdMedicament = pm.IdMedicament,
+                            Name = pm.Medicament.Name,
+                            Dose = pm.Dose,
+                            Details = pm.Details
+                        })
+                        .ToList()
+                })
+                .ToList()
+        };
 
         return dto;
     }

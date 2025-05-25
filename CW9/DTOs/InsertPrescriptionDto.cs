@@ -30,14 +30,15 @@ namespace CW9.DTOs
 
         [Required, MaxLength(100)]
         public string LastName  { get; set; } = null!;
+        
+        public DateTime BirthDate { get; set; }
     }
 
     public class InsertMedicamentDto
     {
         [Required]
         public int IdMedicament { get; set; }
-
-        [Required]
+        
         public int Dose { get; set; }
 
         [Required, MaxLength(100)]
