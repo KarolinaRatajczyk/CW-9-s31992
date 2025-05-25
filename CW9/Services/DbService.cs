@@ -81,7 +81,7 @@ public class DbService : IDbService
         return prescription.IdPrescription;
     }
     
-    public async Task<PatientDetailsDto> GetPatientDetailsAsync(int patientId)
+    public async Task<PatientDetailsDto> GetPatientDetailsByIdAsync(int patientId)
     {
         var dto = await _db.Patients
             .Where(p => p.IdPatient == patientId)
