@@ -1,26 +1,46 @@
-using CW9.Models;
+using System.ComponentModel.DataAnnotations;
 
-namespace CW9.DTOs;
-
-public class PrescriptionInsertDto
+namespace CW9.DTOs
 {
-    public int IdDoctor { get; set; }
-    public PatientDto Patient { get; set; } = null!;
-    public List<MedicamentDto> Medicaments { get; set; } = null!;
-    public DateTime Date { get; set; }
-    public DateTime DueDate { get; set; }
-}
+    public class InsertPrescriptionDto
+    {
+        [Required]
+        public int DoctorId { get; set; }
 
-public class PatientDto
-{
-    public string FirstName { get; set; } = null!;
-    public string LastName { get; set; } = null!;
-    public DateTime BirthDate { get; set; }
-}
+        [Required]
+        public InsertPatientDto Patient { get; set; } = null!;
 
-public class MedicamentDto
-{
-    public int IdMedicament { get; set; }
-    public int Dose { get; set; }
-    public string Details { get; set; } = null!;
+        [Required]
+        public DateTime Date { get; set; }
+
+        [Required]
+        public DateTime DueDate { get; set; }
+
+        [Required, MinLength(1), MaxLength(10)]
+        public List<InsertMedicamentDto> Medicaments { get; set; }
+            = new List<InsertMedicamentDto>();
+    }
+
+    public class InsertPatientDto
+    {
+        public int? IdPatient { get; set; }
+
+        [Required, MaxLength(100)]
+        public string FirstName { get; set; } = null!;
+
+        [Required, MaxLength(100)]
+        public string LastName  { get; set; } = null!;
+    }
+
+    public class InsertMedicamentDto
+    {
+        [Required]
+        public int IdMedicament { get; set; }
+
+        [Required]
+        public int Dose { get; set; }
+
+        [Required, MaxLength(100)]
+        public string Details { get; set; } = null!;
+    }
 }

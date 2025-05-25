@@ -1,133 +1,127 @@
+using CW9.DTOs;
+using CW9.Models;
+using CW9.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
+using System.Linq;
+using System.Collections.Generic;
+
 namespace CW9.Services;
 
 
 public interface IDbService
 {
-    public Task<ICollection<StudentGetDto>> GetStudentsDetailsAsync();
-    public Task<StudentGetDto> GetStudentDetailsByIdAsync(int studentId);
-    public Task<StudentGetDto> CreateStudentAsync(StudentCreateDto studentData);
-    public Task RemoveStudentAsync(int studentId);
-    public Task UpdateStudentAsync(int studentId, StudentUpdateDto studentData);
+    public Task<int> CreatePrescriptionAsync(InsertPrescriptionDto prescriptionData);
+    
+    Task<PatientDetailsDto> GetPatientDetailsByIdAsync(int patientId);
 }
 
 
-public class DbService(AppDbContext data) : IDbService
+public class DbService : IDbService
 {
-    public async Task<ICollection<StudentGetDto>> GetStudentsDetailsAsync()
+    private readonly AppDbContext _db;
+    public DbService(AppDbContext db) => _db = db;
+    public async Task<int> CreatePrescriptionAsync(InsertPrescriptionDto prescriptionData)
     {
-        // Get all students from the DB and map them to a DTO
-        return await data.Students.Select(st => new StudentGetDto
+        if (prescriptionData.Medicaments == null || prescriptionData.Medicaments.Count < 1 || prescriptionData.Medicaments.Count > 10)
         {
-            Id = st.Id,
-            FirstName = st.FirstName,
-            LastName = st.LastName,
-            Age = st.Age,
-            EntranceExamScore = st.EntranceExamScore,
-            Groups = st.GroupAssignments.Select(ga => new StudentGetDtoGroup
-            {
-                Id = ga.GroupId,
-                Name = ga.Group.Name,
-            }).ToList()
-        }).ToListAsync();
-    }
-
-    public async Task<StudentGetDto> GetStudentDetailsByIdAsync(int studentId)
-    {
-        // Try to get and map a student to a DTO
-        var result = await data.Students.Select(st => new StudentGetDto
-        {
-            Id = st.Id,
-            FirstName = st.FirstName,
-            LastName = st.LastName,
-            Age = st.Age,
-            EntranceExamScore = st.EntranceExamScore,
-            Groups = st.GroupAssignments.Select(ga => new StudentGetDtoGroup
-            {
-                Id = ga.GroupId,
-                Name = ga.Group.Name,
-            }).ToList()
-        }).FirstOrDefaultAsync(e => e.Id == studentId);
-
-        // If the student does not exist, we have to send a notification about it to the controller.
-        return result ?? throw new NotFoundException($"Student with id: {studentId} not found");
-    }
-
-    public async Task<StudentGetDto> CreateStudentAsync(StudentCreateDto studentData)
-    {
-        List<Group> groups = [];
+            throw new ArgumentException("Prescription must contain between 1 and 10 medicaments");
+        }
         
-        // At first, we have to check if the given groups exist in the DB
-        if (studentData.Groups is not null && studentData.Groups.Count != 0)
+        if(prescriptionData.DueDate < prescriptionData.Date)
+            throw new ArgumentException("Due date must be greater or equal to date");
+        
+        Patient? patient = null;
+        if (prescriptionData.Patient.IdPatient.HasValue)
         {
-            foreach (var groupId in studentData.Groups)
+            patient = await _db.Patients.FindAsync(prescriptionData.Patient.IdPatient.Value);
+        }
+        if (patient == null)
+        {
+            patient = new Patient
             {
-                var group = await data.Groups.FirstOrDefaultAsync(g => g.Id == groupId);
-                if (group is null)
+                FirstName = prescriptionData.Patient.FirstName,
+                LastName  = prescriptionData.Patient.LastName,
+                BirthDate = prescriptionData.Patient.BirthDate
+            };
+            await _db.Patients.AddAsync(patient);
+            await _db.SaveChangesAsync();
+        }
+        
+        var doctor = await _db.Doctors.FindAsync(prescriptionData.DoctorId);
+        if (doctor == null)
+            throw new KeyNotFoundException($"Doctor with id {prescriptionData.DoctorId} not found");
+        
+        var medIds = prescriptionData.Medicaments.Select(m => m.IdMedicament).ToList();
+        var meds = await _db.Medicaments
+            .Where(m => medIds.Contains(m.IdMedicament))
+            .ToListAsync();
+        if (meds.Count != medIds.Count)
+            throw new KeyNotFoundException("One or more Medicaments not found");
+        
+        var prescription = new Prescription
+        {
+            Date      = prescriptionData.Date,
+            DueDate   = prescriptionData.DueDate,
+            IdPatient = patient.IdPatient,
+            IdDoctor  = doctor.IdDoctor,
+            PrescriptionMedicaments = prescriptionData.Medicaments
+                .Select(m => new PrescriptionMedicament
                 {
-                    throw new NotFoundException($"Group with id: {groupId} not found");
-                }
-                groups.Add(group);
-            }
-        }
-        
-        var student = new Student
-        {
-            FirstName = studentData.FirstName,
-            LastName = studentData.LastName,
-            Age = studentData.Age,
-            EntranceExamScore = studentData.EntranceExamScore,
-            GroupAssignments = (studentData.Groups ?? []).Select(groupId => new GroupAssignment
-            {
-                GroupId = groupId,
-            }).ToList()
+                    IdMedicament = m.IdMedicament,
+                    Dose         = m.Dose,
+                    Details      = m.Details
+                })
+                .ToList()
         };
 
-        // Add new student to the db context, and save all changes.
-        await data.Students.AddAsync(student);
-        await data.SaveChangesAsync();
+        _db.Prescriptions.Add(prescription);
+        await _db.SaveChangesAsync();
 
-        
-        // Return created records to the controller.
-        return new StudentGetDto
-        {
-            Id = student.Id,
-            FirstName = studentData.FirstName,
-            LastName = studentData.LastName,
-            Age = studentData.Age,
-            EntranceExamScore = studentData.EntranceExamScore,
-            Groups = groups.Select(group => new StudentGetDtoGroup
+        return prescription.IdPrescription;
+    }
+    
+    public async Task<PatientDetailsDto> GetPatientDetailsAsync(int patientId)
+    {
+        var dto = await _db.Patients
+            .Where(p => p.IdPatient == patientId)
+            .Select(p => new PatientDetailsDto
             {
-                Id = group.Id,
-                Name = group.Name,
-            }).ToList()
-        };
-    }
+                IdPatient   = p.IdPatient,
+                FirstName   = p.FirstName,
+                LastName    = p.LastName,
+                BirthDate   = p.BirthDate,
+                Prescriptions = p.Prescriptions
+                    .OrderBy(r => r.DueDate)
+                    .Select(r => new PrescriptionDto
+                    {
+                        IdPrescription = r.IdPrescription,
+                        Date           = r.Date,
+                        DueDate        = r.DueDate,
+                        Doctor = new DoctorDto
+                        {
+                            IdDoctor  = r.Doctor.IdDoctor,
+                            FirstName = r.Doctor.FirstName,
+                            LastName  = r.Doctor.LastName,
+                            Email     = r.Doctor.Email
+                        },
+                        Medicaments = r.PrescriptionMedicaments
+                            .Select(pm => new MedicamentDto
+                            {
+                                IdMedicament = pm.IdMedicament,
+                                Name         = pm.Medicament.Name,
+                                Dose         = pm.Dose,
+                                Details      = pm.Details
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
 
-    public async Task RemoveStudentAsync(int studentId)
-    {
-        var affectedRows = await data.Students.Where(s => s.Id == studentId).ExecuteDeleteAsync();
+        if (dto == null)
+            throw new KeyNotFoundException($"Patient with id {patientId} not found");
 
-        // If there are no changes, it means that, there is no record with this id.
-        if (affectedRows == 0)
-        {
-            throw new NotFoundException($"Student with id: {studentId} not found");
-        }
-    }
-
-    public async Task UpdateStudentAsync(int studentId, StudentUpdateDto studentData)
-    {
-        var affectedRows = await data.Students.Where(e => e.Id == studentId).ExecuteUpdateAsync(
-            setters => setters
-                .SetProperty(e => e.FirstName, studentData.FirstName)
-                .SetProperty(e => e.LastName, studentData.LastName)
-                .SetProperty(e => e.Age, studentData.Age)
-                .SetProperty(e => e.EntranceExamScore, studentData.EntranceExamScore)
-        );
-        
-        // If there are no changes, it means that, there is no record with this id.
-        if (affectedRows == 0)
-        {
-            throw new NotFoundException($"Student with id: {studentId} not found");
-        }
+        return dto;
     }
 }
