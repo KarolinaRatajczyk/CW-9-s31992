@@ -4,7 +4,7 @@ using CW9.DTOs;
 
 namespace CW9.Controllers;
 
-[Route("api/[controller]")]
+[Route("api/prescriptions")]
 [ApiController]
 public class PrescriptionController : ControllerBase
 {
