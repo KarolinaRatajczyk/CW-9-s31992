@@ -19,4 +19,6 @@ public class Patient
     
     [Required]
     public DateTime BirthDate { get; set; }
+    
+    public ICollection<Prescription> Prescriptions { get; set; } = null!;
 }

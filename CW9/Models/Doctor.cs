@@ -20,4 +20,6 @@ public class Doctor
     [Required]
     [MaxLength(100)]
     public string Email { get; set; } = null!;
+    
+    public ICollection<Prescription> Prescriptions { get; set; } = null!;
 }
